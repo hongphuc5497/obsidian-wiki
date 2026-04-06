@@ -25,6 +25,8 @@ This project is a **skill-based framework** for building and maintaining an Obsi
 | "what do I know about X" / any question | `.skills/obsidian-query/SKILL.md` |
 | "audit" / "lint" / "find broken links" | `.skills/obsidian-lint/SKILL.md` |
 | "rebuild" / "start over" / "archive" | `.skills/wiki-rebuild/SKILL.md` |
+| "link my pages" / "cross-reference" | `.skills/cross-linker/SKILL.md` |
+| "fix my tags" / "normalize tags" | `.skills/tag-taxonomy/SKILL.md` |
 | "create a new skill" | `.skills/skill-creator/SKILL.md` |
 
 ## Key Rules

@@ -5,7 +5,7 @@
 `~/.claude/projects/` contains one directory per project the user has opened with Claude Code. Directory names encode the absolute path:
 
 ```
-/Users/ar9av/Documents/projects/my-app → -Users-ar9av-Documents-projects-my-app
+/Users/name/Documents/projects/my-app → -Users/name/Documents/projects/my-app
 ```
 
 To recover the original path: replace leading `-` with `/`, then replace remaining `-` cautiously (dashes also appear in directory names). The `cwd` field in session/conversation data gives you the canonical path.
@@ -16,34 +16,41 @@ Located at `~/.claude/projects/<project-dir>/<session-uuid>.jsonl`.
 
 Each line is one event. Relevant event types:
 
-| `type` | What it is | Worth reading? |
-|---|---|---|
-| `user` | User message | Yes — this is what the user asked/said |
-| `assistant` | Assistant response | Yes — extract `text` blocks from content |
-| `progress` | Tool execution progress | No — internal plumbing |
-| `file-history-snapshot` | File state at session start | No — just file listings |
+| `type`                  | What it is                  | Worth reading?                           |
+| ----------------------- | --------------------------- | ---------------------------------------- |
+| `user`                  | User message                | Yes — this is what the user asked/said   |
+| `assistant`             | Assistant response          | Yes — extract `text` blocks from content |
+| `progress`              | Tool execution progress     | No — internal plumbing                   |
+| `file-history-snapshot` | File state at session start | No — just file listings                  |
 
 #### User message structure
+
 ```json
 {
   "type": "user",
-  "message": {"role": "user", "content": "the user's message as a string"},
+  "message": { "role": "user", "content": "the user's message as a string" },
   "timestamp": "2026-03-15T10:30:00.000Z",
   "sessionId": "uuid",
-  "cwd": "/Users/ar9av/Documents/projects/my-app"
+  "cwd": "/Users/name/Documents/projects/my-app"
 }
 ```
 
 #### Assistant message structure
+
 ```json
 {
   "type": "assistant",
   "message": {
     "role": "assistant",
     "content": [
-      {"type": "thinking", "text": "internal reasoning (skip this)"},
-      {"type": "text", "text": "The actual visible response"},
-      {"type": "tool_use", "id": "...", "name": "Read", "input": {"file_path": "..."}}
+      { "type": "thinking", "text": "internal reasoning (skip this)" },
+      { "type": "text", "text": "The actual visible response" },
+      {
+        "type": "tool_use",
+        "id": "...",
+        "name": "Read",
+        "input": { "file_path": "..." }
+      }
     ]
   },
   "timestamp": "2026-03-15T10:30:05.000Z"
@@ -71,12 +78,12 @@ rule/fact, then **Why:** and **How to apply:** lines.
 
 **Memory types and their wiki value:**
 
-| Type | Contains | Maps to wiki |
-|---|---|---|
-| `user` | User's role, preferences, expertise | Entity page about the user, or context for other pages |
-| `feedback` | Workflow corrections and confirmations | Skills pages — "how to work effectively" |
-| `project` | Active work, goals, decisions, deadlines | Entity pages for projects |
-| `reference` | Pointers to external resources | Reference pages |
+| Type        | Contains                                 | Maps to wiki                                           |
+| ----------- | ---------------------------------------- | ------------------------------------------------------ |
+| `user`      | User's role, preferences, expertise      | Entity page about the user, or context for other pages |
+| `feedback`  | Workflow corrections and confirmations   | Skills pages — "how to work effectively"               |
+| `project`   | Active work, goals, decisions, deadlines | Entity pages for projects                              |
+| `reference` | Pointers to external resources           | Reference pages                                        |
 
 `MEMORY.md` in each memory directory is an index with one-line summaries. Read it first to triage.
 
@@ -88,7 +95,7 @@ Located at `~/.claude/sessions/<pid>.json`. Light metadata:
 {
   "pid": 12345,
   "sessionId": "uuid",
-  "cwd": "/Users/ar9av/Documents/projects/my-app",
+  "cwd": "/Users/name/Documents/projects/my-app",
   "startedAt": "2026-03-15T10:30:00.000Z",
   "kind": "interactive",
   "entrypoint": "cli"

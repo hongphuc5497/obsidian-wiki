@@ -59,14 +59,14 @@ Knowledge often belongs to a specific project. The `projects/` directory mirrors
 ```
 $OBSIDIAN_VAULT_PATH/
 ├── projects/
-│   ├── mirrormind/
-│   │   ├── mirrormind.md      ← project overview (named after project)
+│   ├── my-project/
+│   │   ├── my-project.md      ← project overview (named after project)
 │   │   ├── concepts/          ← project-scoped category pages
 │   │   ├── skills/
 │   │   └── ...
-│   ├── grafy-ai/
+│   ├── another-project/
 │   │   └── ...
-│   └── hotlapdaily/
+│   └── side-project/
 │       └── ...
 ├── concepts/                   ← global (cross-project) knowledge
 ├── entities/
@@ -80,30 +80,30 @@ $OBSIDIAN_VAULT_PATH/
 
 **Cross-referencing:** Project pages should `[[wikilink]]` to global pages and vice versa. A project's overview page should link to the key concept, skill, and entity pages relevant to that project — whether they live under the project or globally.
 
-**Naming rule:** The project overview file must be named `<project-name>.md`, not `_project.md`. Obsidian's graph view uses the filename as the node label — `_project.md` makes every project appear as `_project` in the graph, making it unreadable. So `projects/mirrormind/mirrormind.md`, `projects/prismor/prismor.md`, etc.
+**Naming rule:** The project overview file must be named `<project-name>.md`, not `_project.md`. Obsidian's graph view uses the filename as the node label — `_project.md` makes every project appear as `_project` in the graph, making it unreadable. So `projects/my-project/my-project.md`, `projects/another-project/another-project.md`, etc.
 
 Each project directory has an overview page structured like this:
 
 ```markdown
 ---
-title: MirrorMind
+title: My Project
 category: project
-tags: [ai, debate, news]
-source_path: ~/.claude/projects/-Users-ar9av-Documents-projects-MirrorMind
+tags: [ai, web, backend]
+source_path: ~/.claude/projects/-Users-name-Documents-projects-my-project
 created: 2026-03-01T00:00:00Z
 updated: 2026-04-06T00:00:00Z
 ---
 
-# MirrorMind
+# My Project
 
 One-paragraph summary of what this project is.
 
 ## Key Concepts
-- [[concepts/anthropic-api]] — used for debate generation
-- [[projects/mirrormind/concepts/debate-engine]] — project-specific architecture
+- [[concepts/some-api]] — used for core functionality
+- [[projects/my-project/concepts/main-architecture]] — project-specific architecture
 
 ## Related
-- [[entities/vercel-functions]] — deployment platform
+- [[entities/some-service]] — deployment platform
 ```
 
 ## Special Files

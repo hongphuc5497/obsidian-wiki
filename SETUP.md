@@ -89,11 +89,11 @@ $OBSIDIAN_VAULT_PATH/
 ├── synthesis/          # Cross-cutting analysis
 ├── journal/            # Timestamped logs
 ├── projects/           # Per-project knowledge
-│   ├── mirrormind/
+│   ├── my-project/
 │   │   ├── _project.md
 │   │   ├── concepts/
 │   │   └── skills/
-│   └── grafy-ai/
+│   └── another-project/
 │       └── ...
 ├── _archives/          # Wiki snapshots for rebuild/restore
 ├── index.md            # Auto-maintained catalog

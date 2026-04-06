@@ -21,13 +21,16 @@ You are extracting knowledge from the user's past Claude Code conversations and 
 ## Ingest Modes
 
 ### Append Mode (default)
+
 Check `.manifest.json` for each source file (conversation JSONL, memory file). Only process:
+
 - Files not in the manifest (new conversations, new memory files, new projects)
 - Files whose modification time is newer than their `ingested_at` in the manifest
 
 This is usually what you want — the user ran a few new sessions and wants to capture the delta.
 
 ### Full Mode
+
 Process everything regardless of manifest. Use after a `wiki-rebuild` or if the user explicitly asks.
 
 ## Claude Code Data Layout
@@ -76,6 +79,7 @@ Glob: ~/.claude/projects/*/*.jsonl
 ```
 
 Build an inventory and classify each file:
+
 - **New** — not in manifest → needs ingesting
 - **Modified** — in manifest but file is newer → needs re-ingesting
 - **Unchanged** — in manifest and not modified → skip in append mode
@@ -97,6 +101,7 @@ Memory content here.
 ```
 
 For each memory file:
+
 - Read it and parse the frontmatter
 - `user` type → feeds into an entity page about the user, or concept pages about their domain
 - `feedback` type → feeds into skills pages (workflow patterns, what works, what doesn't)
@@ -114,7 +119,7 @@ Each JSONL file is one conversation session. Each line is a JSON object:
   "type": "user|assistant|progress|file-history-snapshot",
   "message": {
     "role": "user|assistant",
-    "content": "text string" 
+    "content": "text string"
   },
   "uuid": "...",
   "timestamp": "2026-03-15T10:30:00.000Z",
@@ -137,12 +142,14 @@ For assistant messages, `content` may be an array of content blocks:
 ```
 
 **What to extract from conversations:**
+
 - Filter to `type: "user"` and `type: "assistant"` entries only
 - For assistant entries, extract `text` blocks (skip `thinking` and `tool_use` — those are noise)
 - The `cwd` field tells you which project this conversation belongs to
 - The project directory name (e.g., `-Users-name-Documents-projects-my-app`) tells you the project path
 
 **Skip these:**
+
 - `type: "progress"` — internal agent progress updates
 - `type: "file-history-snapshot"` — file state tracking
 - Subagent conversations (under `subagents/` subdirectories) — unless the user specifically asks
@@ -161,35 +168,38 @@ Don't create one wiki page per conversation. Instead:
 Each Claude project maps to a project directory in the vault. The project directory name from `~/.claude/projects/` encodes the original path — decode it to get a clean project name:
 
 ```
--Users-ar9av-Documents-projects-MirrorMind → mirrormind
--Users-ar9av-Documents-projects-grafy-ai   → grafy-ai
+-Users/Documents/projects/my-Project   → myproject
+-Users/Documents/projects/Another-app  → anotherapp
 ```
 
 ### Project-specific vs. global knowledge
 
-| What you found | Where it goes | Example |
-|---|---|---|
-| Project architecture decisions | `projects/<name>/concepts/` | `projects/mirrormind/concepts/debate-engine.md` |
-| Project-specific debugging | `projects/<name>/skills/` | `projects/mirrormind/skills/api-rate-limiting.md` |
-| General concept the user learned | `concepts/` (global) | `concepts/react-server-components.md` |
-| Recurring problem across projects | `skills/` (global) | `skills/debugging-hydration-errors.md` |
-| A tool/service used | `entities/` (global) | `entities/vercel-functions.md` |
-| Patterns across many conversations | `synthesis/` (global) | `synthesis/common-debugging-patterns.md` |
+| What you found                     | Where it goes               | Example                                             |
+| ---------------------------------- | --------------------------- | --------------------------------------------------- |
+| Project architecture decisions     | `projects/<name>/concepts/` | `projects/my-project/concepts/main-architecture.md` |
+| Project-specific debugging         | `projects/<name>/skills/`   | `projects/my-project/skills/api-rate-limiting.md`   |
+| General concept the user learned   | `concepts/` (global)        | `concepts/react-server-components.md`               |
+| Recurring problem across projects  | `skills/` (global)          | `skills/debugging-hydration-errors.md`              |
+| A tool/service used                | `entities/` (global)        | `entities/vercel-functions.md`                      |
+| Patterns across many conversations | `synthesis/` (global)       | `synthesis/common-debugging-patterns.md`            |
 
 For each project with content, create or update the project overview page at `projects/<name>/<name>.md` — **named after the project, not `_project.md`**. Obsidian's graph view uses the filename as the node label, so `_project.md` makes every project show up as `_project` in the graph. Naming it `<name>.md` gives each project a distinct, readable node name.
 
-**Important:** Distill the *knowledge*, not the conversation. Don't write "In a conversation on March 15, the user asked about X." Write the knowledge itself, with the conversation as a source attribution.
+**Important:** Distill the _knowledge_, not the conversation. Don't write "In a conversation on March 15, the user asked about X." Write the knowledge itself, with the conversation as a source attribution.
 
 ## Step 6: Update Manifest, Journal, and Special Files
 
 ### Update `.manifest.json`
+
 For each source file processed (conversation JSONL, memory file), add/update its entry with:
+
 - `ingested_at`, `size_bytes`, `modified_at`
 - `source_type`: `"claude_conversation"` or `"claude_memory"`
 - `project`: the decoded project name
 - `pages_created` and `pages_updated` lists
 
 Also update the `projects` section of the manifest:
+
 ```json
 {
   "project-name": {
