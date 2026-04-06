@@ -1,12 +1,12 @@
 # obsidian-wiki
 
-Andrej Karpathy published a [gist](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) about maintaining a personal knowledge base with LLMs — the "LLM Wiki" pattern. The idea: instead of asking an LLM the same questions over and over (or doing RAG every time), you compile knowledge once into interconnected markdown files and keep them current. Obsidian is the viewer, the LLM is the maintainer.
+Andrej Karpathy published a [gist](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) about maintaining a personal knowledge base with LLMs - the "LLM Wiki" pattern. The idea: instead of asking an LLM the same questions over and over (or doing RAG every time), you compile knowledge once into interconnected markdown files and keep them current. Obsidian is the viewer, the LLM is the maintainer.
 
 We took that and built a framework around it. No Python scripts, no API keys, no dependencies. The whole thing is a set of markdown skill files that any AI coding agent (Claude Code, Cursor, Windsurf, whatever you use) can read and execute. You point it at your Obsidian vault and tell it what to do.
 
 ## What we added on top of Karpathy's pattern
 
-**Delta tracking.** A manifest tracks every source file that's been ingested — path, timestamps, which wiki pages it produced. When you come back later, it computes the delta and only processes what's new or changed. You're not re-ingesting your entire document library every time.
+**Delta tracking.** A manifest tracks every source file that's been ingested : path, timestamps, which wiki pages it produced. When you come back later, it computes the delta and only processes what's new or changed. You're not re-ingesting your entire document library every time.
 
 **Project-based organization.** Knowledge gets filed under projects when it's project-specific, globally when it's not. Both are cross-referenced with wikilinks. If you're working on 10 different codebases, each one gets its own space in the vault.
 
