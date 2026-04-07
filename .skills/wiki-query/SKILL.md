@@ -48,9 +48,11 @@ Build a candidate set *without opening any page bodies*:
 
 If you're in **index-only mode**, stop here. Answer from `summary:` fields, titles, and `index.md` descriptions only. Label the answer clearly: **"(index-only answer — page bodies not read; facts below are from page summaries and may miss nuance)"**. Then skip to Step 5.
 
-### Step 2b: QMD Semantic Pass (replaces grep section pass when QMD is available)
+### Step 2b: QMD Semantic Pass (optional — requires `QMD_WIKI_COLLECTION` in `.env`)
 
-If `QMD_WIKI_COLLECTION` is set in `.env` and the index pass didn't produce clear candidates — or the question requires semantic matching rather than exact terms — use QMD before reaching for `Grep`:
+> **No QMD?** Skip to Step 3 and use `Grep` directly on the vault. QMD is faster and concept-aware but the grep path is fully functional. See `.env.example` for setup.
+
+If `QMD_WIKI_COLLECTION` is set and the index pass didn't produce clear candidates — or the question requires semantic matching rather than exact terms — use QMD before reaching for `Grep`:
 
 ```
 mcp__qmd__query:

@@ -5,7 +5,8 @@ description: >
   Use this skill whenever the user wants to add new sources to their wiki, process a document or directory,
   import articles, papers, or notes into their knowledge base, or says things like "add this to the wiki",
   "process these docs", "ingest this folder". Also triggers when the user drops a file and wants it
-  incorporated into their existing knowledge base.
+  incorporated into their existing knowledge base. Also handles raw mode: "process my drafts", "promote
+  my raw pages", or any reference to the _raw/ staging directory.
 ---
 
 # Obsidian Ingest — Document Distillation
@@ -21,7 +22,7 @@ You are ingesting source documents into an Obsidian wiki. Your job is not to sum
 
 ## Ingest Modes
 
-This skill supports two modes. Ask the user or infer from context:
+This skill supports three modes. Ask the user or infer from context:
 
 ### Append Mode (default)
 Only ingest sources that are **new or modified** since last ingest. Check the manifest:
@@ -36,6 +37,13 @@ Ingest everything regardless of manifest state. Use when:
 - The user explicitly asks for a full ingest
 - The manifest is missing or corrupted
 - After a `wiki-rebuild` has cleared the vault
+
+### Raw Mode
+Process draft pages from the `_raw/` staging directory inside the vault. Use when:
+- The user says "process my drafts", "promote my raw pages", or drops files into `_raw/`
+- After a paste-heavy session where notes were captured quickly without structure
+
+In raw mode, each file in `OBSIDIAN_VAULT_PATH/_raw/` (or `OBSIDIAN_RAW_DIR`) is treated as a source. After promoting a file to a proper wiki page, **delete the original from `_raw/`**. Never leave promoted files in `_raw/` — they'll be double-processed on the next run.
 
 ## The Ingest Process
 
@@ -63,7 +71,11 @@ Vision is interpretive by nature, so image-derived pages will skew heavily towar
 
 For PDFs that are mostly images (scanned docs, slide decks exported to PDF), use `Read pages: "N"` to pull specific pages and treat each page as an image source.
 
-### Step 1b: QMD Source Discovery (when ingesting into `_raw/` or when `QMD_PAPERS_COLLECTION` is set)
+### Step 1b: QMD Source Discovery (optional — requires `QMD_PAPERS_COLLECTION` in `.env`)
+
+> **No QMD?** Skip this step entirely. Use `Grep` in Step 4 to check for existing pages on the same topic before creating new ones. See `.env.example` for QMD setup instructions.
+
+When `QMD_PAPERS_COLLECTION` is set:
 
 Before extracting knowledge from a document, check whether related papers are already indexed that could enrich the page you're about to write:
 
@@ -86,7 +98,7 @@ Use the returned snippets to:
 
 If the QMD results show that 3+ papers touch the same concept, that concept almost certainly warrants a global `concepts/` page.
 
-**Skip this step** if `_raw/` is empty or `QMD_PAPERS_COLLECTION` is not set.
+**Skip this step** if `QMD_PAPERS_COLLECTION` is not set.
 
 
 ### Step 2: Extract Knowledge
