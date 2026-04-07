@@ -3,6 +3,8 @@
 *.pyc
 __pycache__/
 
-# Agent skill symlinks (created by setup.sh) — these are just pointers to .skills/
-# We track them so cloners get the symlinks too, but if your git doesn't
-# preserve symlinks, run `bash setup.sh` after cloning.
+# Agent-specific directories (created by setup.sh, not needed in repo)
+.agents/
+.claude/
+.cursor/
+.windsurf/
