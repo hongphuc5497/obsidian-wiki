@@ -73,6 +73,8 @@ For PDFs that are mostly images (scanned docs, slide decks exported to PDF), use
 
 ### Step 1b: QMD Source Discovery (optional — requires `QMD_PAPERS_COLLECTION` in `.env`)
 
+**GUARD: If `$QMD_PAPERS_COLLECTION` is empty or unset, skip this entire step and proceed to Step 2.**
+
 > **No QMD?** Skip this step entirely. Use `Grep` in Step 4 to check for existing pages on the same topic before creating new ones. See `.env.example` for QMD setup instructions.
 
 When `QMD_PAPERS_COLLECTION` is set:
