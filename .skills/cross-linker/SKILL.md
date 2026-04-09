@@ -66,17 +66,31 @@ For each page in the vault:
 
 ## Step 3: Score and Rank Suggestions
 
-Not every possible link is worth adding. Score each candidate:
+Not every possible link is worth adding. Score each candidate using a composite signal, then tag it with a confidence label.
 
-| Signal | Weight | Example |
+### Scoring
+
+| Signal | Points | Example |
 |---|---|---|
-| **Exact name match in text** | High | "MyProject" appears in body text → link to my-project.md |
-| **Shared tags (2+)** | Medium | Both tagged `#ai #agent` but no link between them |
-| **Same project, no link** | Medium | Both under `projects/my-project/` but don't reference each other |
-| **Mentioned entity/concept** | Medium | Page mentions "knowledge graphs" → link to `[[concepts/knowledge-graphs]]` |
-| **Partial name match** | Low | "graph" appears but page is `knowledge-graphs` — too ambiguous, skip |
+| **Exact name match in text** | +4 | "MyProject" appears in body text → link to my-project.md |
+| **Shared tags (2+)** | +2 | Both tagged `#ai #agent` but no link between them |
+| **Same project, no link** | +2 | Both under `projects/my-project/` but don't reference each other |
+| **Mentioned entity/concept** | +2 | Page mentions "knowledge graphs" → link to `[[concepts/knowledge-graphs]]` |
+| **Cross-category connection** | +2 | Source is in `concepts/`, target is in `entities/` (or `skills/` ↔ `synthesis/`) — different knowledge layers make this link more architecturally valuable |
+| **Peripheral→hub reach** | +2 | Source page has ≤ 2 total links (peripheral) but target has ≥ 8 (hub) — connecting a loose page to a load-bearing concept |
+| **Partial name match** | +1 | "graph" appears but page is `knowledge-graphs` — plausible but ambiguous |
 
-Only act on **High** and **Medium** confidence links.
+### Confidence labels
+
+Tag each candidate with a confidence label based on its score:
+
+| Score | Label | Action |
+|---|---|---|
+| ≥ 6 | **EXTRACTED** | Link is effectively certain — exact mention or very strong match. Apply inline. |
+| 3–5 | **INFERRED** | Link is a reasonable inference — shared context, cross-category, peripheral→hub. Apply inline or as Related section. |
+| 1–2 | **AMBIGUOUS** | Weak or partial match. Skip unless user specifically asks to connect loose pages. |
+
+Only act on **EXTRACTED** and **INFERRED** candidates. Include the confidence label in the Cross-Link Report so the user can review INFERRED links before trusting them.
 
 ## Step 4: Apply Links
 
@@ -120,11 +134,11 @@ Present a summary:
 
 ### Links Added: 23 across 12 pages
 
-| Page | Links Added | Type |
-|---|---|---|
-| `projects/my-project/my-project.md` | 3 | 2 inline, 1 related |
-| `entities/jane-doe.md` | 5 | 3 inline, 2 related |
-| ... | | |
+| Page | Links Added | Confidence | Type |
+|---|---|---|---|
+| `projects/my-project/my-project.md` | 3 | EXTRACTED | 2 inline, 1 related |
+| `entities/jane-doe.md` | 5 | INFERRED | 3 inline, 2 related |
+| ... | | | |
 
 ### Orphan Pages Remaining: 2
 - `references/foo.md` — no incoming or outgoing links found

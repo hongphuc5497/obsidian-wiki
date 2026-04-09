@@ -107,15 +107,35 @@ Verify `index.md` matches the actual page inventory.
 Check whether pages are being honest about how much of their content is inferred vs extracted. See the Provenance Markers section in `llm-wiki` for the convention.
 
 **How to check:**
-- For each page, count sentences/bullets in the body and how many end with `^[inferred]` or `^[ambiguous]`
-- Compute the rough fractions (`extracted`, `inferred`, `ambiguous`)
-- **Speculation-heavy:** flag pages where `inferred + ambiguous > 0.6` of total content. The wiki is supposed to compile knowledge, not speculate.
-- **Drift:** if the page has a `provenance:` frontmatter block, flag it when any field is more than 0.20 off from the recomputed value.
-- **Skip** pages that have no `provenance:` frontmatter and no markers — they're treated as fully extracted by convention (the check is opt-in for older pages).
+- For each page with a `provenance:` block or any `^[inferred]`/`^[ambiguous]` markers, count sentences/bullets and how many end with each marker
+- Compute rough fractions (`extracted`, `inferred`, `ambiguous`)
+- Apply these thresholds:
+  - **AMBIGUOUS > 15%**: flag as "speculation-heavy" — even 1-in-7 claims being genuinely uncertain is a signal the page needs tighter sourcing or should be moved to `synthesis/`
+  - **INFERRED > 40% with no `sources:` in frontmatter**: flag as "unsourced synthesis" — the page is making connections but has nothing to cite
+  - **Hub pages** (top 10 by incoming wikilink count) with INFERRED > 20%: flag as "high-traffic page with questionable provenance" — errors on hub pages propagate to every page that links to them
+  - **Drift**: if the page has a `provenance:` frontmatter block, flag it when any field is more than 0.20 off from the recomputed value
+- **Skip** pages with no `provenance:` frontmatter and no markers — treated as fully extracted by convention
 
 **How to fix:**
-- For drift: update the `provenance:` frontmatter to match reality.
-- For speculation-heavy: re-ingest the page from its sources, or split the inferred content into a `synthesis/` page (where speculation is expected) and leave the original page tighter.
+- For ambiguous-heavy: re-ingest from sources, resolve the uncertain claims, or split speculative content into a `synthesis/` page
+- For unsourced synthesis: add `sources:` to frontmatter or clearly label the page as synthesis
+- For hub pages with INFERRED > 20%: prioritize for re-ingestion — errors here have the widest blast radius
+- For drift: update the `provenance:` frontmatter to match the recomputed values
+
+### 8. Fragmented Tag Clusters
+
+Checks whether pages that share a tag are actually linked to each other. Tags imply a topic cluster; if those pages don't reference each other, the cluster is fragmented — knowledge islands that should be woven together.
+
+**How to check:**
+- For each tag that appears on ≥ 5 pages:
+  - `n` = count of pages with this tag
+  - `actual_links` = count of wikilinks between any two pages in this tag group (check both directions)
+  - `cohesion = actual_links / (n × (n−1) / 2)`
+- Flag any tag group where cohesion < 0.15 and n ≥ 5
+
+**How to fix:**
+- Run the `cross-linker` skill targeted at the fragmented tag — it will surface and insert the missing links
+- If a tag group is large (n > 15) and still fragmented, consider splitting it into more specific sub-tags
 
 ## Output Format
 
@@ -147,15 +167,21 @@ Report findings as a structured list:
 - `entities/bar.md` — summary exceeds 200 chars
 
 ### Provenance Issues (N found)
-- `concepts/scaling.md` — speculation-heavy: 72% of bullets marked `^[inferred]`
+- `concepts/scaling.md` — AMBIGUOUS > 15%: 22% of claims are ambiguous (re-source or move to synthesis/)
 - `entities/some-tool.md` — drift: frontmatter says inferred=0.10, recomputed=0.45
+- `concepts/transformers.md` — hub page (31 incoming links) with INFERRED=28%: errors here propagate widely
+- `synthesis/speculation.md` — unsourced synthesis: no `sources:` field, 55% inferred
+
+### Fragmented Tag Clusters (N found)
+- **#systems** — 7 pages, cohesion=0.06 ⚠️ — run cross-linker on this tag
+- **#databases** — 5 pages, cohesion=0.10 ⚠️
 ```
 
 ## After Linting
 
 Append to `log.md`:
 ```
-- [TIMESTAMP] LINT issues_found=N orphans=X broken_links=Y stale=Z contradictions=W prov_issues=P missing_summary=S
+- [TIMESTAMP] LINT issues_found=N orphans=X broken_links=Y stale=Z contradictions=W prov_issues=P missing_summary=S fragmented_clusters=F
 ```
 
 Offer to fix issues automatically or let the user decide which to address.

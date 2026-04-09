@@ -25,12 +25,16 @@ You are ingesting source documents into an Obsidian wiki. Your job is not to sum
 This skill supports three modes. Ask the user or infer from context:
 
 ### Append Mode (default)
-Only ingest sources that are **new or modified** since last ingest. Check the manifest:
-- If a source path is not in `.manifest.json` → it's new, ingest it
-- If a source path is in `.manifest.json` but its modification time on disk is newer than `ingested_at` → it's modified, re-ingest it
-- If a source path is in `.manifest.json` and unchanged → skip it
+Only ingest sources that are **new or modified** since last ingest. Check the manifest using both timestamp **and content hash**:
 
-This is the right choice most of the time. It's fast and doesn't duplicate work.
+- If a source path is not in `.manifest.json` → it's new, ingest it
+- If a source path is in `.manifest.json`:
+  - Compute the file's SHA-256 hash: `sha256sum <file>` (or `shasum -a 256 <file>` on macOS)
+  - If the hash matches `content_hash` in the manifest → **skip it**, even if the modification time differs (file was touched but content is identical — git checkout, copy, NFS timestamp drift)
+  - If the hash differs → it's genuinely modified, re-ingest it
+- If a source path is in `.manifest.json` and has no `content_hash` (older entry) → fall back to mtime comparison as before
+
+This is the right choice most of the time. It's fast and avoids redundant work even when timestamps are unreliable.
 
 ### Full Mode
 Ingest everything regardless of manifest state. Use when:
@@ -173,12 +177,15 @@ After writing pages, check that wikilinks work in both directions. If page A lin
   "ingested_at": "TIMESTAMP",
   "size_bytes": FILE_SIZE,
   "modified_at": FILE_MTIME,
+  "content_hash": "sha256:<64-char-hex>",
   "source_type": "document",  // or "image" for png/jpg/webp/gif and image-only PDFs
   "project": "project-name-or-null",
   "pages_created": ["list/of/pages.md"],
   "pages_updated": ["list/of/pages.md"]
 }
 ```
+`content_hash` is the SHA-256 of the file contents at ingest time. Always write it — it's the primary skip signal on subsequent runs.
+
 Also update `stats.total_sources_ingested` and `stats.total_pages`.
 
 If the manifest doesn't exist yet, create it with `version: 1`.

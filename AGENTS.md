@@ -25,6 +25,7 @@ This project is a **skill-based framework** for building and maintaining an Obsi
 | "fix my tags" / "normalize tags" / "tag audit" | `.skills/tag-taxonomy/SKILL.md` |
 | "update wiki" / "sync to wiki" / "save this to my wiki" | `.skills/wiki-update/SKILL.md` |
 | "create a new skill" | `.skills/skill-creator/SKILL.md` |
+| "export wiki" / "export graph" / "graphml" / "neo4j" / "visualize wiki" | `.skills/wiki-export/SKILL.md` |
 
 ## Key Rules
 

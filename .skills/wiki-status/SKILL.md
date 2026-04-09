@@ -94,9 +94,12 @@ Compare current sources against the manifest. Classify each source file:
 | Status | Meaning | Action needed |
 |---|---|---|
 | **New** | File exists on disk, not in manifest | Needs ingesting |
-| **Modified** | File in manifest, but `modified_at` on disk is newer than `ingested_at` | Needs re-ingesting |
-| **Unchanged** | File in manifest, not modified since ingest | Nothing to do |
+| **Modified** | File in manifest, hash differs from `content_hash` | Needs re-ingesting |
+| **Touched** | File in manifest, mtime newer but hash unchanged | Skip — content identical, no re-ingest needed |
+| **Unchanged** | File in manifest, mtime and hash both match | Nothing to do |
 | **Deleted** | In manifest, but file no longer exists on disk | Note it — wiki pages may be stale |
+
+When a manifest entry has no `content_hash` (older entry), fall back to mtime comparison only.
 
 For Claude history specifically, also compute:
 - New projects (directories in `~/.claude/projects/` not in manifest)
@@ -167,63 +170,122 @@ Where the delta report tells the user what's pending, insights mode tells them w
 
 ### What to compute
 
-1. **Anchor pages (top hubs).** Pages with the highest number of incoming `[[wikilinks]]`. These are the load-bearing concepts of the wiki — usually the right places to start reading.
-   - Glob all `.md` files in the vault
-   - For each page, Grep the rest of the vault for `[[<page-name>]]` and count incoming references
-   - Rank top 10
-   - Also note outgoing link counts — pages that are both heavily incoming *and* heavily outgoing are connector hubs
+**First, build the wikilink graph.** Glob all `.md` pages, extract every `[[wikilink]]`, and build:
+- `incoming[page]` = count of other pages that link to this page
+- `outgoing[page]` = count of pages this page links out to
+- `tags[page]` = set of tags from frontmatter
+- `category[page]` = directory prefix (concepts/, entities/, skills/, etc.)
 
-2. **Cross-domain bridges.** Pairs of pages connected via a 2-hop wikilink path (A → M → B) where A and B share *no tags*. These are accidental bridges between disjoint topic areas — usually the most interesting threads for the user to revisit.
-   - For each page A, walk one hop to its outgoing links
-   - From each of those, walk one more hop
-   - Filter to A→M→B where the tag sets of A and B are disjoint
-   - Rank by how disjoint the tag sets are; show top 10
+You'll reuse this graph across all sections below.
 
-3. **Orphan-adjacent suggestions.** Pages that are linked from an anchor page but link to *nothing themselves*. These are dead-ends in heavily-trafficked parts of the wiki — prime candidates for cross-linking.
+---
 
-4. **Cluster sketch.** Group anchor pages by shared tags into rough clusters and label each with its dominant tag. (No real graph algorithm — just tag intersection. Obsidian's native graph view does the proper version.)
+1. **Anchor pages (top hubs).** Pages with the most incoming links — the load-bearing concepts.
+   - Rank all pages by `incoming` count, take top 10
+   - For each, note both incoming and outgoing counts: pages with high incoming *and* high outgoing are connector hubs (most valuable)
+   - Pages with high incoming but zero outgoing are sink hubs — flag as cross-linker candidates
+
+2. **Bridge pages.** Pages that connect otherwise-disconnected tag clusters — removing them would partition the graph. These are often more structurally important than raw hub count suggests.
+   - For each page P, find pairs of pages (A, B) where:
+     - A links to P, B is linked from P (or vice versa)
+     - A and B share **no tags** with each other
+     - P is the only path between A's tag cluster and B's tag cluster within 2 hops
+   - Rank by how many cross-cluster pairs P bridges; show top 5
+   - Label each: "`P` bridges `[tag-cluster-A]` ↔ `[tag-cluster-B]`"
+
+3. **Tag cluster cohesion.** For each tag with ≥ 5 pages, score how tightly the pages within it are interconnected:
+   - `n` = number of pages sharing this tag
+   - `actual_links` = number of wikilinks between any two pages in this tag group
+   - `cohesion = actual_links / (n × (n−1) / 2)` — ratio of actual links to maximum possible
+   - **Fragmented clusters** (cohesion < 0.15, n ≥ 5): these pages share a topic but aren't woven together. Surface them as cross-linker targets.
+   - Show top 5 tags by cohesion (strongest clusters) and bottom 5 (most fragmented)
+
+4. **Surprising connections.** Cross-category wikilinks that are non-obvious — scored by how unexpected they are:
+   - Score each wikilink that crosses category boundaries (e.g., `concepts/` → `entities/`, `skills/` → `synthesis/`):
+     - **+3** if the linking page or claim is marked `^[ambiguous]` (uncertain connection, worth reviewing)
+     - **+2** if the linking page is marked `^[inferred]` (synthesized, not directly stated)
+     - **+2** if the categories are in different knowledge layers (e.g., `concepts` ↔ `entities` more surprising than `concepts` ↔ `concepts`)
+     - **+2** if source page has ≤ 2 total links (peripheral) but target has ≥ 8 (hub) — unexpected reach from edge to center
+   - Show top 5 scored connections with a plain-language reason for each
+
+5. **Orphan-adjacent suggestions.** Pages linked from a top-10 hub but with zero outgoing links of their own. Dead-ends in high-traffic areas — prime cross-linker candidates.
+
+6. **Rough clusters.** Group anchor pages by dominant tag. (Simple tag intersection — just for orientation.)
+
+7. **Graph delta since last run.** Compare the current link graph to the snapshot stored in the previous `_insights.md`:
+   - Read the `<!-- GRAPH_SNAPSHOT: ... -->` line at the bottom of the previous `_insights.md` (if it exists) — it contains a compact JSON edge list
+   - Compute: new pages added, pages removed, new wikilinks created, wikilinks removed
+   - Flag: pages that were isolated last run but now have incoming links ("newly connected: X, Y")
+   - Flag: pages that lost incoming links since last run ("link target may have been renamed: A, B")
+   - If no previous snapshot exists, skip this section
+
+8. **Suggested questions.** Questions this wiki structure is uniquely positioned to answer — or that reveal gaps:
+   - From `^[ambiguous]` claims: "Resolve: What is the exact relationship between `X` and `Y`?"
+   - From bridge pages: "Explore: Why does `P` connect `[cluster-A]` to `[cluster-B]`?"
+   - From pages with zero incoming links: "Link: `X` has no incoming links — what should reference it?"
+   - From fragmented clusters (cohesion < 0.15): "Audit: Should tag `[T]` be split into more focused sub-tags?"
+   - Show up to 7, prioritizing AMBIGUOUS first, then bridge nodes, then isolates
+
+---
 
 ### Output
 
-Write the result to `_insights.md` at the vault root. This file is regenerable on every run — overwrite freely. Suggested gitignore: add `_insights.md` if the user version-controls their vault.
+Write the result to `_insights.md` at the vault root. Overwrite freely — it's regenerable. At the very end, embed a compact graph snapshot as an HTML comment so the next run can diff against it.
 
 ```markdown
 # Wiki Insights — <TIMESTAMP>
 
 ## Anchor Pages (top 10 hubs)
-| Page | Incoming | Outgoing | Tags |
+| Page | Incoming | Outgoing | Note |
 |---|---|---|---|
-| [[concepts/transformer-architecture]] | 23 | 8 | ml, architecture |
-| [[entities/andrej-karpathy]] | 17 | 4 | person, ml |
-| ...
+| [[concepts/transformer-architecture]] | 23 | 8 | connector hub |
+| [[entities/andrej-karpathy]] | 17 | 0 | sink hub — cross-linker candidate |
 
-## Cross-Domain Bridges
-- [[concepts/scaling-laws]] → [[skills/cooking-techniques]] via [[concepts/exponential-growth]]
-  - Tags share: *none* — accidental bridge between disjoint topics
+## Bridge Pages (top 5)
+| Page | Bridges | Cross-cluster pairs |
+|---|---|---|
+| [[concepts/exponential-growth]] | #ml ↔ #economics | 4 pairs |
+
+## Tag Cluster Cohesion
+### Most cohesive (well-linked)
+- **#ml** — 12 pages, cohesion 0.41
+### Most fragmented (cross-linker targets)
+- **#systems** — 7 pages, cohesion 0.06 ⚠️ run cross-linker on this tag
+
+## Surprising Connections (top 5)
+- [[concepts/scaling-laws]] → [[entities/gordon-moore]] — score 5
+  - Reason: cross-layer (concepts ↔ entities), marked ^[inferred]
 - ...
 
-## Orphan-Adjacent (dead-end pages near hubs)
-- [[concepts/foo]] — linked from 3 hubs but has 0 outbound links. Cross-linker candidate.
-- ...
+## Orphan-Adjacent (dead-ends near hubs)
+- [[concepts/foo]] — linked from 3 hubs, 0 outbound links
 
 ## Rough Clusters
-- **#ml** — transformer-architecture, attention-mechanism, scaling-laws, andrej-karpathy
+- **#ml** — transformer-architecture, attention-mechanism, scaling-laws
 - **#systems** — distributed-consensus, raft, paxos
-- ...
 
-## Suggested Questions
-- Why does [[concepts/scaling-laws]] keep showing up next to cooking content? (cross-domain bridge)
-- [[concepts/foo]] is a dead-end — what should it link to?
+## Graph Delta Since Last Run
+- +3 new pages, +11 new wikilinks
+- Newly connected: [[concepts/bar]], [[entities/baz]]
+- Lost incoming links: [[references/old-paper]] (target may have been renamed)
+
+## Questions Worth Asking
+1. Resolve: What is the exact relationship between `scaling-laws` and `moore's-law`? (^[ambiguous] claim)
+2. Explore: Why does `exponential-growth` bridge #ml and #economics?
+3. Link: `references/foo.md` has no incoming links — what should reference it?
+4. Audit: Should tag `#systems` be split? (cohesion 0.06, 7 pages)
+
+<!-- GRAPH_SNAPSHOT: {"nodes":["concepts/foo","entities/bar"],"edges":[["concepts/foo","entities/bar"]]} -->
 ```
 
 After writing the file, append to `log.md`:
 ```
-- [TIMESTAMP] STATUS_INSIGHTS anchors=10 bridges=N orphan_adjacent=M
+- [TIMESTAMP] STATUS_INSIGHTS anchors=10 bridges=N cohesion_checked=T surprising=5 questions=7 delta="+N pages +M links"
 ```
 
 ### When to skip
 
-- Vaults with fewer than 20 pages — there's not enough graph structure for the analysis to mean anything. Tell the user and skip.
+- Vaults with fewer than 20 pages — not enough graph structure. Tell the user and skip.
 - After a fresh `wiki-rebuild` — wait until at least one ingest has happened.
 
 ## Notes
