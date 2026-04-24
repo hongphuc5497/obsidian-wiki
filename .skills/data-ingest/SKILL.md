@@ -140,6 +140,8 @@ Follow the `wiki-ingest` skill's process for creating/updating pages:
 - [TIMESTAMP] DATA_INGEST source="path/to/data" format=FORMAT pages_updated=X pages_created=Y
 ```
 
+**`hot.md`** — Read `$OBSIDIAN_VAULT_PATH/hot.md` (create from the template in `wiki-ingest` if missing). Update **Recent Activity** with the most meaningful thing extracted from this data source — last 3 operations max. Update `updated` timestamp.
+
 ## Tips
 
 - **When in doubt about format, just read it.** The Read tool will show you what you're dealing with.

@@ -49,9 +49,20 @@ Once you have a candidate name, check whether `$OBSIDIAN_VAULT_PATH/projects/<pr
 | Project detected + folder **does not exist** | Create project structure, then add page (Step 3b) |
 | No project context | Fall back to `misc/` (Step 3c) |
 
+## Step 0.5: Clean Extraction Preflight
+
+Before fetching, check whether the `defuddle` CLI is available:
+
+```bash
+which defuddle
+```
+
+- **If available:** Use `defuddle <url>` (via Bash) to retrieve a clean, stripped-down markdown version of the page. This removes ads, navbars, cookie banners, and related-content sidebars — reducing token usage by ~40-60% on typical articles. Use the `defuddle` output as your content source for Step 4 instead of the raw WebFetch result.
+- **If not available:** Fall back to `WebFetch` as normal. No action needed.
+
 ## Step 1: Fetch the URL
 
-Use `WebFetch` to retrieve the content at the provided URL.
+Use `WebFetch` to retrieve the content at the provided URL (or skip if `defuddle` was used in Step 0.5).
 
 - If the page is paywalled, JS-rendered (blank body), or returns an error: create a **stub page** with the title (inferred from the URL), the URL, and `stub: true` in frontmatter. Append this to the body: `> [Stub] Page could not be fetched — enrich manually.` Then skip to Step 6.
 - If the page fetches successfully: proceed to Step 2.
@@ -260,6 +271,10 @@ Misc mode:
 ```
 - [TIMESTAMP] INGEST_URL url="<url>" page="misc/<slug>.md" affinity={} promotion_status=misc mode=misc
 ```
+
+## Step 8: Update hot.md
+
+Read `$OBSIDIAN_VAULT_PATH/hot.md` (create from the template in `wiki-ingest` if missing). Update **Recent Activity** with what was just ingested — keep the last 3 operations. Update **Key Takeaways** if the page introduced a concept worth flagging. Update `updated` timestamp.
 
 ## Quality Checklist
 

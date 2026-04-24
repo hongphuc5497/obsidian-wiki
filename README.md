@@ -391,6 +391,9 @@ Everything lives in `.skills/`. Each skill is a markdown file the agent reads wh
 | `llm-wiki`              | The core pattern and architecture reference       | `/llm-wiki`              |
 | `wiki-update`           | Sync current project's knowledge into the vault   | `/wiki-update`           |
 | `wiki-export`           | Export vault graph to JSON, GraphML, Neo4j, HTML  | `/wiki-export`           |
+| `wiki-capture`          | Save the current conversation as a wiki note      | `/wiki-capture`          |
+| `wiki-research`         | Autonomous multi-round web research, self-filed   | `/wiki-research [topic]` |
+| `wiki-dashboard`        | Create dynamic Obsidian Bases dashboard views     | `/wiki-dashboard`        |
 | `skill-creator`         | Create new skills                                 | `/skill-creator`         |
 
 > **Note:** Slash commands (`/skill-name`) work in Claude Code, Cursor, and Windsurf. In other agents, just describe what you want and the agent will find the right skill.
