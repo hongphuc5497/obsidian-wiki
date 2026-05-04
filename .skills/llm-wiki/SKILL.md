@@ -452,6 +452,8 @@ The `tier:` field controls which pages get updated on each ingest pass and their
 
 Reading the vault is the dominant cost of every read-side skill. Use the cheapest primitive that can answer the question and **escalate only when the cheaper one is insufficient**. Any skill that needs content from the vault should follow this table rather than jumping straight to full-page reads.
 
+### Default Primitives (token-constrained models)
+
 | Need | Primitive | Relative cost |
 |---|---|---|
 | Does a page exist? What's its title/category/tags? | Read `index.md`; `Grep` frontmatter blocks (scope with a pattern that targets `^---` blocks at file heads) | **Cheapest** |
@@ -460,7 +462,24 @@ Reading the vault is the dominant cost of every read-side skill. Use the cheapes
 | Whole-page content | `Read <file>` | **Expensive** — last resort |
 | Relationships across pages | `Grep "\[\[.*?\]\]"` across the vault, or walk wikilinks from a known page | Case-by-case |
 
-**The rule:** escalate only when the cheaper primitive can't answer the question. If you can answer from `summary:` fields alone, don't read page bodies. If a grepped section with `-A 10 -B 2` gives you the claim, don't read the whole page. A 500-line page opened to read 15 lines is 485 lines of wasted tokens.
+### Long-Context Primitives (200K+ context window)
+
+When the model has a large context window and QMD is available, the economics invert. Full-page reads become cheaper than multi-round section grepping because each grep call is a separate tool round-trip with its own context overhead.
+
+| Need | Primitive | Notes |
+|---|---|---|
+| Factual lookup ("what is X") | Default primitives still apply | Don't waste context |
+| Synthesis across 5+ pages | QMD → read all candidates full → synthesize | Avoid N separate `Grep -A` calls; one batch read cheaper |
+| Relationship query | QMD → read both pages + 1-hop linked pages full | Wikilinks preserved; section grep breaks cross-ref chains |
+| Gap / exploration query | QMD with low `minScore` → broad full reads | Long context absorbs noise better than precise-but-fragmented retrieval |
+
+**The rule (unchanged):** escalate only when the cheaper primitive can't answer. What changes with long-context models is what's cheap — a single `Read` of 20 full pages into a 200K+ window can cost less than 10 rounds of `Grep -A 15 -B 5` across 20 files.
+
+See `wiki-query` Step 2c for the long-context mode implementation. See [[long-context-rag]] for architecture and tradeoffs.
+
+### Default rule
+
+If you can answer from `summary:` fields alone, don't read page bodies. If a grepped section with `-A 10 -B 2` gives you the claim, don't read the whole page. A 500-line page opened to read 15 lines is 485 lines of wasted tokens — when context is scarce.
 
 **Why this matters:** a 20-page vault lets you get away with full-vault scans. A 200-page vault does not. The primitives above are how the skills framework scales to large vaults without a database.
 

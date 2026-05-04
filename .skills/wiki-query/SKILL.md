@@ -11,6 +11,10 @@ description: >
   "fast lookup" — returns answers from page summaries and frontmatter without reading page bodies.
   Accepts inline named-vault routing like "wiki-query @work what do I know about X" via the shared
   Config Resolution Protocol.
+  Also use when the user wants to explore connections between topics in their wiki. Works from any project.
+  Three retrieval modes: index-only (cheapest — triggered by "quick answer"), long-context (deepest —
+  triggered by "deep dive" / "use full context" — reads 15–20 full pages into a 200K+ context window),
+  and normal (tiered pipeline — escalates from frontmatter → section grep → full read).
 ---
 
 # Wiki Query — Knowledge Retrieval
@@ -92,7 +96,15 @@ Classify the query type:
 
 Also decide the **mode**:
 - **Index-only mode** — triggered by "quick answer", "just scan", "don't read the pages", "fast lookup". Stops at Step 3. Answers from frontmatter + `index.md` only.
-- **Normal mode** — the full tiered pipeline below.
+- **Long-context mode** — triggered by "deep dive", "use full context", "long context", "comprehensive answer", "read everything relevant". Requires QMD. Retrieves top 15–20 pages and reads them all in full, skipping section grep entirely. Best with models that have 200K+ context windows.
+- **Normal mode** — the full tiered pipeline below. Default when no mode phrase is detected.
+
+**Auto-suggest heuristic:** Even without an explicit trigger phrase, suggest long-context mode when ALL of:
+1. Query is classified as **synthesis** or **relationship** (not factual lookup)
+2. `index.md` shows vault has more than 40 pages (enough knowledge for broad retrieval to matter)
+3. QMD is configured (`QMD_WIKI_COLLECTION` is set)
+
+If these conditions are met, prepend your answer: "**(suggestion: try 'deep dive' for comprehensive answer — I can read 15–20 full pages at once)**". Let the user opt in. Don't switch modes automatically — the user decides the cost/quality tradeoff.
 
 ### Step 2: Index Pass (cheap)
 
@@ -164,6 +176,48 @@ The returned snippets or ranked files act as pre-read section summaries. If they
 **Also search `papers` when the question may have source material in `_raw/`:**
 
 If `QMD_PAPERS_COLLECTION` is set and the user is asking about a topic likely covered by ingested papers (research, theory, background), run a parallel search against the papers collection. Cite raw sources separately from compiled wiki pages in your answer.
+
+### Step 2c: Long-Context Mode (skip Steps 3–4 entirely)
+
+If the user triggered long-context mode (phrases like "deep dive", "use full context", "long context", "comprehensive answer", "read everything relevant"), **skip Steps 3 and 4** and use this flow instead:
+
+**GUARD: QMD is required for long-context mode.** If `QMD_WIKI_COLLECTION` is not set, tell the user long-context mode needs QMD configured and fall back to normal mode.
+
+1. **Retrieve broadly with QMD** — cast a wider net than normal mode. Retrieve top 15–20 candidates (higher `limit`), with lower `minScore` (e.g., 0.2) to catch tangentially relevant pages:
+
+```
+mcp__qmd__query:
+  collection: <QMD_WIKI_COLLECTION>
+  intent: <the user's question>
+  limit: 20
+  minScore: 0.2
+  searches:
+    - type: lex
+      query: <key terms>
+    - type: vec
+      query: <question as natural language>
+```
+
+Also search `papers` in parallel if `QMD_PAPERS_COLLECTION` is set.
+
+2. **Budget check** — Before reading, estimate tokens to avoid context overflow. QMD snippet `context` field tells you file type but not size. Use a quick `ls -la` or `wc -c` on the candidate files to get byte sizes, then estimate tokens as `bytes * 1.3` (rough heuristic — markdown is ~1.3 chars per token on average). If the total exceeds your available context budget (assume 60% of model's context window, reserving 40% for instructions and response), trim candidates to the top-N by QMD score that fit. Report the trim in your answer: "(trimmed from 20 to 12 candidates to fit context budget)".
+
+3. **Read all candidates in full** — Read every page that passed the budget check (max 20) without section grep. Read in parallel batches where possible (Read tool supports parallel calls for independent files).
+
+4. **Optionally follow wikilinks** — If the answer would benefit from cross-references, follow 1 hop of `[[wikilinks]]` from the top 3 pages. Add those pages to the full reads (re-run budget check if adding more than 2 new pages).
+
+5. **Re-rank in context** — After reading all candidates but before synthesizing, mentally score each page for relevance to the question (0–10). If any page scores below 3, exclude it from the synthesis. If more than 3 pages score 8+, focus the answer primarily on those. This is "late interaction" — the model's full attention across whole documents replaces a separate re-ranker model. Note the discarded count in the log.
+
+6. **Jump to Step 5 (synthesize)** — The model now has the full text of every relevant page in context. Synthesize answer directly from the re-ranked set.
+
+7. **File back the answer** — After synthesizing, check: did this answer cross-reference 5+ wiki pages? If yes, suggest filing it as a new `synthesis/` page:
+   - Format the suggestion at the end of your answer: "**Synthesis candidate:** This answer draws from N pages. File as `synthesis/<topic-slug>.md`? Say 'file it' and I'll use `wiki-ingest` to create the page."
+   - The user decides — don't auto-create. But the suggestion closes the feedback loop from Phase 3 of the [[llm-wiki-pattern]].
+   - For answers crossing 10+ pages, add a one-line frontmatter summary and list of cited pages to the suggestion.
+
+**Why this works:** At personal scale (~122 pages, ~400K words), the entire wiki is ~500K tokens. Reading 15–20 full pages (~50K–80K words) fits easily in a 200K+ context window while leaving room for instructions and response generation. Whole-page reads preserve the wikilink graph, provenance markers, and cross-reference structure that chunking destroys. See [[long-context-rag]] for full architecture and tradeoffs.
+
+**When NOT to use long-context mode:** If the query is a simple factual lookup ("what is X"), normal mode's index pass or QMD snippets will answer it. Long-context mode is for synthesis queries, relationship queries, and gap queries where the model needs to reason across many pages simultaneously.
 
 ### Step 3: Section Pass (medium cost — only if Steps 2/2b are inconclusive)
 
@@ -250,6 +304,18 @@ Append to `log.md`. This `log.md` append is the *only* write this skill performs
 ```
 - [TIMESTAMP] QUERY query="the user's question" result_pages=N mode=normal|index_only|filtered escalated=true|false
 ```
+
+**Long-context mode** (adds retrieval stats):
+```
+- [TIMESTAMP] QUERY query="the user's question" mode=long_context pages_retrieved=N pages_cited=N tokens_est=T re_ranked_out=N synthesis_candidate=true|false
+```
+
+Fields:
+- `pages_retrieved` — how many pages QMD returned and were read in full
+- `pages_cited` — how many actually cited in the answer (measure retrieval precision)
+- `tokens_est` — estimated tokens consumed by page reads (from budget check)
+- `re_ranked_out` — how many pages discarded by in-context re-ranking
+- `synthesis_candidate` — whether answer was suggested for filing as `synthesis/` page
 
 ## Answer Format
 
