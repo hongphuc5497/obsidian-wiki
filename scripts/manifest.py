@@ -66,9 +66,18 @@ def cmd_normalize(args: argparse.Namespace) -> int:
     collisions = 0
     rekeyed = 0
     for key, entry in sources.items():
-        ckey = canonical(key)
-        if ckey != key:
-            rekeyed += 1
+        if not os.path.isabs(key):
+            # Real vaults store some keys relative to the ingest root (e.g.
+            # "-Users-x-github/abc.jsonl" under ~/.claude/projects/). canonical()
+            # would resolve those against the CWD and rewrite them to a bogus
+            # absolute path. normalize only dedups/canonicalizes absolute keys, so
+            # preserve relative keys untouched (safe no-op) and warn.
+            print(f"  WARN   preserving relative key as-is (not canonicalized): {key}")
+            ckey = key
+        else:
+            ckey = canonical(key)
+            if ckey != key:
+                rekeyed += 1
         if ckey in new_sources:
             new_sources[ckey] = _newest(new_sources[ckey], entry)
             collisions += 1
@@ -103,9 +112,35 @@ def _skip_patterns(cli_skip: str | None) -> list[str]:
     return pats
 
 
+def _relative_key_index(sources: dict) -> dict[str, list[tuple[str, dict]]]:
+    """Index relative source keys by basename for suffix matching.
+
+    Real vaults store many keys relative to the ingest root (e.g.
+    "-Users-x-github/abc.jsonl" under ~/.claude/projects/). canonical()
+    resolves those against the CWD, so they never equal a scanned absolute
+    path. Keying by basename lets cmd_delta fall back to an O(1) suffix check
+    instead of scanning every key per file.
+    """
+    index: dict[str, list[tuple[str, dict]]] = {}
+    for k, v in sources.items():
+        if not os.path.isabs(k):
+            index.setdefault(os.path.basename(k), []).append((k, v))
+    return index
+
+
+def _match_relative(path: str, index: dict[str, list[tuple[str, dict]]]) -> dict | None:
+    """Return the manifest entry whose relative key is a suffix of `path`."""
+    for relkey, entry in index.get(os.path.basename(path), ()):
+        if path == relkey or path.endswith(os.sep + relkey):
+            return entry
+    return None
+
+
 def cmd_delta(args: argparse.Namespace) -> int:
     m = load_manifest(args.vault)
-    known = {canonical(k): v for k, v in m.get("sources", {}).items()}
+    sources = m.get("sources", {})
+    known = {canonical(k): v for k, v in sources.items()}
+    rel_index = _relative_key_index(sources)
     skips = _skip_patterns(args.skip)
 
     matched = sorted(globmod.glob(os.path.expanduser(args.scan), recursive=True))
@@ -118,6 +153,8 @@ def cmd_delta(args: argparse.Namespace) -> int:
             continue
         ckey = canonical(path)
         entry = known.get(ckey)
+        if entry is None:
+            entry = _match_relative(path, rel_index)
         if entry is None:
             new.append(ckey)
         else:

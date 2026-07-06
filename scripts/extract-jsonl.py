@@ -11,7 +11,6 @@ Output layout
   <output_dir>/                           default: ~/.claude/extracted/
     <project-dir-name>/
       <session-uuid>.json                 one per conversation
-    .extract-manifest.json                tracks which source files have been extracted
 
 Extracted file format
 ---------------------
@@ -65,7 +64,6 @@ from pathlib import Path
 # Constants
 # ---------------------------------------------------------------------------
 
-EXTRACT_MANIFEST_NAME = ".extract-manifest.json"
 # Truncate very long individual text blocks (assistant text that includes
 # e.g. a pasted file read) to keep extracted files reasonable.
 MAX_BLOCK_CHARS = 8_000
@@ -103,45 +101,31 @@ def is_skipped(path: str, patterns: list[str]) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Extract-manifest helpers
+# Staleness check
 # ---------------------------------------------------------------------------
-
-def load_extract_manifest(output_dir: str) -> dict:
-    mp = os.path.join(output_dir, EXTRACT_MANIFEST_NAME)
-    if not os.path.exists(mp):
-        return {}
-    with open(mp) as f:
-        return json.load(f)
-
-
-def save_extract_manifest(output_dir: str, manifest: dict) -> None:
-    mp = os.path.join(output_dir, EXTRACT_MANIFEST_NAME)
-    with open(mp, "w") as f:
-        json.dump(manifest, f, indent=2)
-        f.write("\n")
-
 
 def needs_extraction(
     source_path: str,
-    manifest: dict,
+    out_path: str,
     since_ts: float | None,
 ) -> bool:
-    """Return True if the source JSONL should be (re)extracted."""
+    """Return True if the source JSONL should be (re)extracted.
+
+    Idempotent staleness check keyed on the output file: (re)extract when the
+    output is missing or the source is newer than it, so the extractor does not
+    depend on the caller passing the right --since.  --since only narrows the
+    scan range; it never suppresses extraction of a file with a fresh output.
+    """
+    # A missing output is always (re)extracted, regardless of --since.
+    if not os.path.exists(out_path):
+        return True
     mtime = os.path.getmtime(source_path)
-    # --since filter: skip files not modified since the cutoff
+    # --since narrows the scan range: among files that already have an output,
+    # skip those not modified since the cutoff.
     if since_ts is not None and mtime < since_ts:
         return False
-    entry = manifest.get(source_path)
-    if entry is None:
-        return True
-    # Re-extract if the source changed after last extraction
-    try:
-        extracted_ts = datetime.fromisoformat(
-            entry["extracted_at"].replace("Z", "+00:00")
-        ).timestamp()
-    except (KeyError, ValueError):
-        return True
-    return mtime > extracted_ts
+    # Re-extract if the source changed after the output was last written.
+    return mtime > os.path.getmtime(out_path)
 
 
 # ---------------------------------------------------------------------------
@@ -277,10 +261,8 @@ def run(args: argparse.Namespace) -> int:
         print(f"No JSONL files found under {pattern}")
         return 0
 
-    # Load the extraction manifest (tracks what's already been extracted)
     if not args.dry_run:
         os.makedirs(output_dir, exist_ok=True)
-    ext_manifest = load_extract_manifest(output_dir) if not args.dry_run else {}
 
     stats = {"scanned": 0, "skipped_pattern": 0, "skipped_since": 0,
              "skipped_unchanged": 0, "extracted": 0, "empty": 0, "error": 0}
@@ -294,7 +276,13 @@ def run(args: argparse.Namespace) -> int:
                 print(f"  SKIP(pattern)  {source_path}")
             continue
 
-        if not needs_extraction(source_path, ext_manifest, since_ts):
+        # Derive the output path from the source path (project dir + file stem)
+        # so the staleness check can compare against the actual output file.
+        project = os.path.basename(os.path.dirname(source_path))
+        session_id = os.path.splitext(os.path.basename(source_path))[0]
+        out_path = os.path.join(output_dir, project, session_id + ".json")
+
+        if not needs_extraction(source_path, out_path, since_ts):
             stats["skipped_unchanged"] += 1
             if args.verbose:
                 print(f"  SKIP(unchanged) {source_path}")
@@ -309,9 +297,6 @@ def run(args: argparse.Namespace) -> int:
             stats["empty"] += 1
             if args.verbose:
                 print(f"    -> empty (no usable turns)")
-            if not args.dry_run:
-                # Still mark as extracted so we don't retry unless the file changes
-                _mark_extracted(ext_manifest, source_path)
             continue
 
         project_dir = os.path.join(output_dir, result["project"])
@@ -322,14 +307,10 @@ def run(args: argparse.Namespace) -> int:
             with open(out_path, "w", encoding="utf-8") as f:
                 json.dump(result, f, ensure_ascii=False, indent=2)
                 f.write("\n")
-            _mark_extracted(ext_manifest, source_path)
 
         stats["extracted"] += 1
         if not args.verbose and stats["extracted"] % 25 == 0:
             print(f"  ... {stats['extracted']} extracted so far")
-
-    if not args.dry_run:
-        save_extract_manifest(output_dir, ext_manifest)
 
     # Summary
     print(
@@ -343,16 +324,6 @@ def run(args: argparse.Namespace) -> int:
         f"  Output dir:       {output_dir if not args.dry_run else '(dry-run, nothing written)'}"
     )
     return 0
-
-
-def _mark_extracted(manifest: dict, source_path: str) -> None:
-    manifest[source_path] = {
-        "extracted_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "size_bytes": os.path.getsize(source_path),
-        "modified_at": datetime.fromtimestamp(
-            os.path.getmtime(source_path), tz=timezone.utc
-        ).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    }
 
 
 # ---------------------------------------------------------------------------
